@@ -1,13 +1,14 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 )
 
-// Task ...
 type Task struct {
 	ID           string   `json:"id"`
 	Description  string   `json:"description"`
@@ -39,14 +40,79 @@ var tasks = map[string]Task{
 	},
 }
 
-// Ниже напишите обработчики для каждого эндпоинта
-// ...
+func getTasks(w http.ResponseWriter, r *http.Request) {
+	resp, err := json.Marshal(tasks)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(resp)
+}
+
+func postTask(w http.ResponseWriter, r *http.Request) {
+
+	var task Task
+	var buf bytes.Buffer
+
+	_, err := buf.ReadFrom(r.Body)
+	if err != nil {
+		http.Error(w, "Ошибка чтения r.Body", http.StatusBadRequest)
+		return
+	}
+
+	err = json.Unmarshal(buf.Bytes(), &task)
+	if err != nil {
+		http.Error(w, "Ошибка при расшифровке json", http.StatusBadRequest)
+		return
+	}
+
+	tasks[task.ID] = task
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+}
+
+func getTask(w http.ResponseWriter, r *http.Request) {
+
+	ID := chi.URLParam(r, "id")
+	body, ok := tasks[ID]
+	if !ok {
+		http.Error(w, "Задача не найдена", http.StatusBadRequest)
+		return
+	}
+
+	task, err := json.Marshal(body)
+	if err != nil {
+		http.Error(w, "Ошибка маршализации структуры", http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(task)
+
+}
+
+func deleteTask(w http.ResponseWriter, r *http.Request) {
+
+	ID := chi.URLParam(r, "id")
+	_, ok := tasks[ID]
+	if !ok {
+		http.Error(w, "Задача отсутствует", http.StatusBadRequest)
+		return
+	}
+
+	delete(tasks, ID)
+	w.WriteHeader(http.StatusOK)
+}
 
 func main() {
 	r := chi.NewRouter()
 
-	// здесь регистрируйте ваши обработчики
-	// ...
+	r.Get("/tasks", getTasks)
+	r.Get("/tasks/{id}", getTask)
+	r.Post("/tasks", postTask)
+	r.Delete("/tasks/{id}", deleteTask)
 
 	if err := http.ListenAndServe(":8080", r); err != nil {
 		fmt.Printf("Ошибка при запуске сервера: %s", err.Error())
